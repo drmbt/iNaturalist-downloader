@@ -1,0 +1,94 @@
+# iNaturalist Image Downloader .gitignore
+
+# Downloaded images and data
+images/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+
+# Generated metadata files
+*.json
+!requirements.txt
+!package.json
+!package-lock.json
+
+# Environment variables and authentication tokens
+.env
+.env.local
+.env.production
+.env.staging
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Test files
+test_*.jpg
+test_*.json
+test_*.pyc
+
+# Large files that shouldn't be in version control
+*.zip
+*.tar.gz
+*.rar 
