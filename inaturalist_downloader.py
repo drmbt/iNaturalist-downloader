@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin
 import logging
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -304,6 +305,45 @@ class iNaturalistDownloader:
         
         return metadata
 
+def construct_sanitized_filename(observation, photo, photo_index):
+    """
+    Construct a sanitized filename for the image using the convention:
+    <time_observed_at>_<iconic_taxon_name>_<name>_<preferred_common_name>_<attribution>_<photo_index>.jpg
+    All spaces replaced with '-', illegal filename characters stripped, and total length clamped to 224 chars (truncating from the end).
+    Uses 'none-listed' as the default for any missing or None field.
+    """
+    import re
+    # Extract fields with 'none-listed' as default
+    taxon = observation.get('taxon') or {}
+    iconic_taxon_name = taxon.get('iconic_taxon_name') or 'none-listed'
+    name = taxon.get('name') or 'none-listed'
+    preferred_common_name = taxon.get('preferred_common_name') or 'none-listed'
+    attribution = photo.get('attribution') or 'none-listed'
+    time_observed_at = observation.get('time_observed_at') or observation.get('observed_on') or 'none-listed'
+    
+    # Remove colons and other illegal filename characters from time
+    if time_observed_at:
+        time_observed_at = re.sub(r'[:\\/*?"<>|]', '', str(time_observed_at))
+    else:
+        time_observed_at = 'none-listed'
+    
+    # Replace spaces with dashes and join parts
+    def clean(s):
+        if not s:
+            return 'none-listed'
+        s = str(s)
+        s = s.replace(' ', '-')
+        s = re.sub(r'[^A-Za-z0-9_.\-]', '', s)  # Only allow safe chars
+        return s
+    
+    parts = [clean(time_observed_at), clean(iconic_taxon_name), clean(name), clean(preferred_common_name), clean(attribution), str(photo_index)]
+    base = '_'.join(parts)
+    ext = '.jpg'
+    # Clamp to 224 chars, always keep extension, truncate from the end
+    if len(base) + len(ext) > 224:
+        base = base[:224-len(ext)]
+    return base + ext
+
 def main():
     """Main function to handle CLI arguments and execute the download process."""
     parser = argparse.ArgumentParser(
@@ -312,7 +352,7 @@ def main():
         epilog="""
 Examples:
   python inaturalist_downloader.py --lat -8.132489362310453 --lon 115.36386760679501 --radius 5
-  python inaturalist_downloader.py --lat -8.132489362310453 --lon 115.36386760679501 --radius 5 --output metadata.json --images-dir ./images
+  python inaturalist_downloader.py --lat -8.132489362310453 --lon 115.36386760679501 --radius 5 --images-dir ./images
         """
     )
     
@@ -322,8 +362,6 @@ Examples:
                        help='Longitude of the center point (default: Les village, Bali)')
     parser.add_argument('--radius', type=float, default=5.0,
                        help='Radius in miles (will be converted to kilometers, default: 5)')
-    parser.add_argument('--output', type=str, default='inaturalist_metadata.json',
-                       help='Output JSON file for metadata (default: inaturalist_metadata.json)')
     parser.add_argument('--images-dir', type=str, default='./images',
                        help='Directory to save downloaded images (default: ./images)')
     parser.add_argument('--download-images', action='store_true', default=True,
@@ -365,7 +403,32 @@ Examples:
     if args.download_images:
         os.makedirs(args.images_dir, exist_ok=True)
         logger.info(f"Images will be saved to: {args.images_dir}")
-    
+
+    # Always create metadata file in images dir with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_json = os.path.join(args.images_dir, f'iNaturalist_metadata_{timestamp}.json')
+
+    # Prepare initial metadata structure
+    output_data = {
+        'metadata': {
+            'generated_at': datetime.now().isoformat(),
+            'center_latitude': args.lat,
+            'center_longitude': args.lon,
+            'radius_miles': args.radius,
+            'radius_km': radius_km,
+            'total_observations': 0,
+            'images_downloaded': 0,
+            'images_skipped': 0,
+            'images_failed': 0,
+            'success_rate_percent': 0.0,
+            'images_directory': args.images_dir if args.download_images else None
+        },
+        'observations': []
+    }
+    # Create the file immediately
+    with open(output_json, 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, indent=2, ensure_ascii=False)
+
     # Initialize downloader
     downloader = iNaturalistDownloader()
     
@@ -472,8 +535,8 @@ Examples:
                     image_url = f"{base_url}/original.jpg"
                 
                 if image_url:
-                    # Create filename based on observation ID and photo index
-                    filename = f"obs_{observation['id']}_photo_{j}.jpg"
+                    # Create filename using the new convention
+                    filename = construct_sanitized_filename(observation, photo, j)
                     
                     # Try to download the requested quality, with fallbacks
                     downloaded_path = None
@@ -541,29 +604,22 @@ Examples:
                 logger.info(f"  Observation {observation.get('id')}: {observation_downloaded}/{observation_photos} photos downloaded")
         
         metadata_list.append(observation_metadata)
+
+        # Update and overwrite the metadata file after each observation
+        output_data['metadata']['total_observations'] = len(metadata_list)
+        output_data['metadata']['images_downloaded'] = downloaded_count
+        output_data['metadata']['images_skipped'] = skipped_count
+        output_data['metadata']['images_failed'] = failed_count
+        total_photos_attempted = downloaded_count + skipped_count + failed_count
+        output_data['metadata']['success_rate_percent'] = round(((downloaded_count + skipped_count) / total_photos_attempted * 100) if total_photos_attempted > 0 else 0, 1)
+        output_data['observations'] = metadata_list
+        with open(output_json, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
     
-    # Save metadata to JSON file
-    output_data = {
-        'metadata': {
-            'generated_at': datetime.now().isoformat(),
-            'center_latitude': args.lat,
-            'center_longitude': args.lon,
-            'radius_miles': args.radius,
-            'radius_km': radius_km,
-            'total_observations': len(metadata_list),
-            'images_downloaded': downloaded_count,
-            'images_skipped': skipped_count,
-            'images_failed': failed_count,
-            'success_rate_percent': round(((downloaded_count + skipped_count) / (downloaded_count + skipped_count + failed_count) * 100) if (downloaded_count + skipped_count + failed_count) > 0 else 0, 1),
-            'images_directory': args.images_dir if args.download_images else None
-        },
-        'observations': metadata_list
-    }
-    
-    with open(args.output, 'w', encoding='utf-8') as f:
+    # Final save (redundant, but ensures file is up to date at end)
+    with open(output_json, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
-    
-    logger.info(f"Metadata saved to: {args.output}")
+    logger.info(f"Metadata saved to: {output_json}")
     
     # Print comprehensive summary
     total_photos_attempted = downloaded_count + skipped_count + failed_count

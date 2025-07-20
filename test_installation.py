@@ -63,7 +63,7 @@ def main():
     
     print("\n✅ All tests passed! The script should work correctly.")
     print("\nYou can now run the script with:")
-    print("python inaturalist_downloader.py --lat 40.7128 --lon -74.0060 --radius 5")
+    print("python inaturalist_downloader.py --lat -8.132489362310453 --lon -115.36386760679501 --radius 5")
 
 if __name__ == "__main__":
     main() 

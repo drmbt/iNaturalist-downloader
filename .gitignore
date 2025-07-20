@@ -1,12 +1,14 @@
 # iNaturalist Image Downloader .gitignore
 
 # Downloaded images and data
-images/
+images*/
 *.jpg
 *.jpeg
 *.png
 *.gif
 *.webp
+
+iNaturalist_metadata*.json
 
 # Generated metadata files
 *.json
